@@ -2,7 +2,7 @@ use juniper::{FieldResult, GraphQLInputObject, IntoFieldError};
 use serde::Deserialize;
 
 use super::auth;
-use super::db::{NewUserDTO, UserEntity};
+use super::db::{NewUserDTO, UserEntity, UserUpdateDTO};
 use super::model::{Profile, User};
 use crate::schema::{Context, MutationRoot, QueryRoot};
 
@@ -16,12 +16,26 @@ pub struct NewUser {
 
 #[derive(GraphQLInputObject, Deserialize)]
 #[graphql(description = "Payload to update a registered user to the app")]
-pub struct UserUpdateDTO {
+pub struct UserUpdate {
     email: Option<String>,
     password: Option<String> ,
     username: Option<String>,
     image: Option<String>,
     bio: Option<String>,
+}
+
+impl UserUpdate {
+    fn to_entity(self, user_entity: UserEntity) -> UserUpdateDTO {
+        UserUpdateDTO {
+            email: self.email.unwrap_or(user_entity.email),
+            password_hash: self.password.map( |s| {
+                bcrypt::hash(s, bcrypt::DEFAULT_COST).unwrap()
+            }).unwrap_or(user_entity.password_hash),
+            username: self.username.unwrap_or(user_entity.username),
+            image: self.image.or(user_entity.image),
+            bio: self.bio.or(user_entity.bio),
+        }
+    }
 }
 
 #[derive(GraphQLInputObject)]
@@ -106,7 +120,7 @@ impl MutationRoot {
         }
     }
 
-    fn update_user(context: &Context, user_update_dto: UserUpdateDTO) -> FieldResult<User> {
+    fn update_user(context: &Context, user_update: UserUpdate) -> FieldResult<User> {
       use super::auth::decode_token;
       if context.token.is_none() {
         return Err(UserError::Unauthorized.into_field_error())
@@ -122,7 +136,9 @@ impl MutationRoot {
       let pool = &context.db_pool;
       use super::db::get_user_by_id;
       let user = get_user_by_id(pool, &id).unwrap();
-      Ok(User::from(user))
+      let update_user_dto = user_update.to_entity(user);
+      let updated_user = super::db::update_user(pool, update_user_dto, &id).unwrap();
+      Ok(User::from(updated_user))
     }
 }
 

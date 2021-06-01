@@ -5,7 +5,6 @@ extern crate dotenv;
 use actix_web::{ middleware, web, App, Error, HttpResponse, HttpServer};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use db::DbPool;
-use juniper::http::graphiql::graphiql_source;
 use juniper::http::playground::playground_source;
 use juniper::http::GraphQLRequest;
 use schema::Context;

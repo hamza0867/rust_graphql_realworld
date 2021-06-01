@@ -22,6 +22,16 @@ pub struct NewUserDTO {
     pub username: String,
 }
 
+#[derive(AsChangeset)]
+#[table_name = "users"]
+pub struct UserUpdateDTO {
+    pub email: String,
+    pub username: String,
+    pub bio: Option<String>,
+    pub image: Option<String>,
+    pub password_hash: String,
+}
+
 use crate::db::DbPool;
 pub fn create(pool: &DbPool, new_user: NewUserDTO) -> QueryResult<UserEntity> {
     use diesel::insert_into;
@@ -43,6 +53,12 @@ pub fn get_user_by_id(pool: &DbPool, given_id: &i32) -> QueryResult<UserEntity> 
     users
     .filter(id.eq(given_id))
     .first::<UserEntity>(&conn)
+}
+
+pub fn update_user(pool: &DbPool, user_update_dto: UserUpdateDTO, given_id: &i32) -> QueryResult<UserEntity> {             
+    let conn = pool.get().unwrap();
+    diesel::update(users.filter(id.eq(given_id)))
+      .set(user_update_dto).get_result::<UserEntity>(&conn)
 }
 
 

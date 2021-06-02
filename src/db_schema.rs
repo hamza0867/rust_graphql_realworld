@@ -1,4 +1,12 @@
 table! {
+    follows (follower_id, followed_id) {
+        follower_id -> Int4,
+        followed_id -> Int4,
+        active -> Bool,
+    }
+}
+
+table! {
     users (id) {
         id -> Int4,
         email -> Varchar,
@@ -8,3 +16,8 @@ table! {
         password_hash -> Varchar,
     }
 }
+
+allow_tables_to_appear_in_same_query!(
+    follows,
+    users,
+);

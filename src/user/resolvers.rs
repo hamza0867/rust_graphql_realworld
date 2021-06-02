@@ -45,18 +45,6 @@ pub struct AuthPayload {
     password: String,
 }
 
-#[juniper::graphql_object(Context = Context)]
-impl QueryRoot {
-    fn profile(username: String) -> FieldResult<Profile> {
-        Ok(Profile {
-            username,
-            bio: "bio".to_owned(),
-            image: "image url".to_owned(),
-            following: true,
-        })
-    }
-}
-
 impl From<NewUser> for NewUserDTO {
     fn from(new_user: NewUser) -> Self {
         let hashed_pwd = bcrypt::hash(new_user.password, bcrypt::DEFAULT_COST).unwrap();
@@ -79,6 +67,65 @@ impl From<UserEntity> for User {
         }
     }
 }
+
+#[juniper::graphql_object(Context = Context)]
+impl QueryRoot {
+    fn profile(context: &Context, username: String) -> FieldResult<Profile> {
+        use super::auth::decode_token;
+        if context.token.is_none() {
+            return Err(UserError::Unauthorized.into_field_error())
+        }
+        let token = context.token.as_ref().unwrap().as_str();
+        let claims_result = decode_token(token);
+        if claims_result.is_err() {
+            return Err(UserError::Unauthorized.into_field_error())
+        }
+        let claims = claims_result.unwrap().claims;
+        let id = claims.sub.parse::<i32>().unwrap();
+
+        let pool = &context.db_pool;
+        use super::db::get_user_by_username;
+        let user = get_user_by_username(pool, &username);
+        if let Err(e) = user {
+            return match e {
+                diesel::result::Error::NotFound => {
+                    Err(UserError::NotFound.into_field_error())
+                }
+                _ => {
+                    eprintln!("{}", e);
+                    use juniper::{graphql_value, FieldError};
+                    Err(FieldError::new(
+                        "Internal Server Error",
+                        graphql_value!({
+                            "code": "internal.server.error"
+                        }),
+                    ))
+                }
+            };
+        };
+        let user = user.unwrap();
+        use super::db::get_follows;
+        let following = get_follows(pool, &id, &username);
+        if let Err(e) = following {
+            eprintln!("{}", e);
+            use juniper::{graphql_value, FieldError};
+            return Err(FieldError::new(
+                "Internal Server Error",
+                graphql_value!({
+                    "code": "internal.server.error"
+                }),
+            ))
+        };
+        let following = following.unwrap();
+        Ok(Profile {
+            username: user.username,
+            bio: user.bio,
+            image: user.image,
+            following,
+        })
+    }
+}
+
 
 use super::errors::UserError;
 #[juniper::graphql_object(Context = Context)]
@@ -121,24 +168,24 @@ impl MutationRoot {
     }
 
     fn update_user(context: &Context, user_update: UserUpdate) -> FieldResult<User> {
-      use super::auth::decode_token;
-      if context.token.is_none() {
-        return Err(UserError::Unauthorized.into_field_error())
-      }
-      let token = context.token.as_ref().unwrap().as_str();
-      let claims_result = decode_token(token);
-      if claims_result.is_err() {
-        return Err(UserError::Unauthorized.into_field_error())
-      }
-      let claims = claims_result.unwrap().claims;
-      let id = claims.sub.parse::<i32>().unwrap();
+        use super::auth::decode_token;
+        if context.token.is_none() {
+            return Err(UserError::Unauthorized.into_field_error())
+        }
+        let token = context.token.as_ref().unwrap().as_str();
+        let claims_result = decode_token(token);
+        if claims_result.is_err() {
+            return Err(UserError::Unauthorized.into_field_error())
+        }
+        let claims = claims_result.unwrap().claims;
+        let id = claims.sub.parse::<i32>().unwrap();
 
-      let pool = &context.db_pool;
-      use super::db::get_user_by_id;
-      let user = get_user_by_id(pool, &id).unwrap();
-      let update_user_dto = user_update.to_entity(user);
-      let updated_user = super::db::update_user(pool, update_user_dto, &id).unwrap();
-      Ok(User::from(updated_user))
+        let pool = &context.db_pool;
+        use super::db::get_user_by_id;
+        let user = get_user_by_id(pool, &id).unwrap();
+        let update_user_dto = user_update.to_entity(user);
+        let updated_user = super::db::update_user(pool, update_user_dto, &id).unwrap();
+        Ok(User::from(updated_user))
     }
 }
 

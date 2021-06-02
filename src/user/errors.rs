@@ -2,7 +2,8 @@ use juniper::{graphql_value, FieldError, IntoFieldError};
 
 pub enum UserError {
     InvalidUsernameOrPassword,
-    Unauthorized
+    Unauthorized,
+    NotFound
 }
 
 impl IntoFieldError for UserError {
@@ -16,6 +17,9 @@ impl IntoFieldError for UserError {
             ),
             UserError::Unauthorized => FieldError::new("Unauthorized", graphql_value!({
                 "code": "unauthorized"
+            }) ),
+            UserError::NotFound => FieldError::new("Not found", graphql_value!({
+                "code": "user.not.found"
             }) )
         }
     }

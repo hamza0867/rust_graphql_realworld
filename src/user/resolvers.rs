@@ -231,5 +231,56 @@ impl MutationRoot {
         })
         
     }
+
+    fn unfollow(context: &Context, username: String) -> FieldResult<Profile>{
+        let pool = &context.db_pool;
+        let id = auth::get_id_from_token(&context.token);
+        if let Err(e) = id {
+            return Err(e);
+        };
+        let id = id.unwrap();
+
+        use super::db::get_user_by_username;
+        let user = get_user_by_username(pool, &username);
+        if let Err(e) = user {
+            return match e {
+                diesel::result::Error::NotFound => {
+                    Err(UserError::NotFound.into_field_error())
+                }
+                _ => {
+                    eprintln!("{}", e);
+                    use juniper::{graphql_value, FieldError};
+                    Err(FieldError::new(
+                        "Internal Server Error",
+                        graphql_value!({
+                            "code": "internal.server.error"
+                        }),
+                    ))
+                }
+            };
+        };
+        let user = user.unwrap();
+        use super::db::unfollow;
+        let exec_result = unfollow(pool, &id, &username);
+        if let Err(e) = exec_result {
+            
+                    eprintln!("{}", e);
+                    use juniper::{graphql_value, FieldError};
+                    return Err(FieldError::new(
+                        "Internal Server Error",
+                        graphql_value!({
+                            "code": "internal.server.error"
+                        }),
+                    ));
+                
+        };
+        Ok(Profile {
+            username,
+            bio: user.bio,
+            image: user.image,
+            following: false
+        })
+        
+    }
 }
 

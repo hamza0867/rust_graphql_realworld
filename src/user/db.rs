@@ -124,3 +124,23 @@ pub fn follow(pool: &DbPool, given_follower_id: &i32, given_followed_username: &
       .map(|_| ())
 }
 
+pub fn unfollow(pool: &DbPool, given_follower_id: &i32, given_followed_username: &String) -> QueryResult<()> {
+    let conn = pool.get().unwrap();
+    let given_followed_id = users
+    .filter(username.eq(given_followed_username))
+    .select(id)
+    .first::<i32>(&conn)?;
+                use diesel::insert_into;
+    insert_into(follows)
+      .values(&NewFollowsDTO {
+        followed_id:given_followed_id,
+        follower_id: given_follower_id.to_owned(),
+        active: false
+      }).on_conflict(
+        on_constraint("follows_pkey")
+      ).do_update()
+      .set(active.eq(false))
+      .execute(&conn)
+      .map(|_| ())
+}
+

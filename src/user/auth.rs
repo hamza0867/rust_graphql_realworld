@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use chrono::{Duration, prelude::*};
 use jsonwebtoken as jwt;
 use jwt::{DecodingKey, EncodingKey, decode, Validation, TokenData};
+use super::errors::UserError;
+use juniper::{FieldError, IntoFieldError};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -24,5 +26,20 @@ pub fn get_token(id: i32) -> String {
 
 pub fn decode_token(token: &str) -> jwt::errors::Result<TokenData<Claims>> {
     decode::<Claims>(token, &DecodingKey::from_secret("real_world_rust_graphql".as_ref()), &Validation::default())
+}
+
+pub fn get_id_from_token(token: &Option<String>) -> Result<i32, FieldError>{
+
+    if token.is_none() {
+        return Err(UserError::Unauthorized.into_field_error())
+    }
+    let token = token.as_ref().unwrap().as_str();
+    let claims_result = decode_token(token);
+    if claims_result.is_err() {
+        return Err(UserError::Unauthorized.into_field_error())
+    }
+    let claims = claims_result.unwrap().claims;
+    let id = claims.sub.parse::<i32>().unwrap();
+    Ok(id)
 }
 

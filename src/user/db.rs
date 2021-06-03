@@ -4,6 +4,8 @@ use crate::db_schema::users;
 use crate::db_schema::users::dsl::*;
 use crate::db_schema::follows;
 use crate::db_schema::follows::dsl::*;
+use crate::db::DbPool;
+use diesel::pg::upsert::*;
 
 #[derive(Queryable, PartialEq)]
 pub struct UserEntity {
@@ -42,7 +44,8 @@ pub struct NewFollowsDTO {
     pub active: bool,
 }
 
-use crate::db::DbPool;
+
+
 pub fn create(pool: &DbPool, new_user: NewUserDTO) -> QueryResult<UserEntity> {
     use diesel::insert_into;
     let conn = pool.get().unwrap();
@@ -99,5 +102,25 @@ pub fn get_follows(pool: &DbPool, given_follower_id: &i32, given_followed_userna
         Ok(x) => Ok(x),
         Err(y) => Err(y)
     }
+}
+
+pub fn follow(pool: &DbPool, given_follower_id: &i32, given_followed_username: &String) -> QueryResult<()> {
+    let conn = pool.get().unwrap();
+    let given_followed_id = users
+    .filter(username.eq(given_followed_username))
+    .select(id)
+    .first::<i32>(&conn)?;
+                use diesel::insert_into;
+    insert_into(follows)
+      .values(&NewFollowsDTO {
+        followed_id:given_followed_id,
+        follower_id: given_follower_id.to_owned(),
+        active: true
+      }).on_conflict(
+        on_constraint("follows_pkey")
+      ).do_update()
+      .set(active.eq(true))
+      .execute(&conn)
+      .map(|_| ())
 }
 

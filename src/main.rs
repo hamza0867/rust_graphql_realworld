@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate diesel;
 extern crate dotenv;
+extern crate slugify;
+extern crate juniper;
 
 use actix_web::{ middleware, web, App, Error, HttpResponse, HttpServer};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
@@ -13,6 +15,7 @@ mod db;
 mod db_schema;
 mod schema;
 mod user;
+mod article;
 
 use crate::schema::{create_schema, Schema};
 

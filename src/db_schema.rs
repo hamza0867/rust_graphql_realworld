@@ -33,6 +33,14 @@ table! {
 }
 
 table! {
+    user_favorites_article (user_id, article_id) {
+        user_id -> Int4,
+        article_id -> Int4,
+        active -> Bool,
+    }
+}
+
+table! {
     users (id) {
         id -> Int4,
         email -> Varchar,
@@ -46,11 +54,14 @@ table! {
 joinable!(articles -> users (author_id));
 joinable!(tag_article -> articles (article_id));
 joinable!(tag_article -> tags (tag));
+joinable!(user_favorites_article -> articles (article_id));
+joinable!(user_favorites_article -> users (user_id));
 
 allow_tables_to_appear_in_same_query!(
     articles,
     follows,
     tag_article,
     tags,
+    user_favorites_article,
     users,
 );

@@ -1,4 +1,4 @@
-use crate::article::resolvers::ArticleMutation;
+use crate::article::resolvers::{ArticleMutation, ArticleQuery};
 use crate::db::DbPool;
 use crate::user::resolvers::{UsersQuery, UsersMutation};
 use juniper::{EmptySubscription, RootNode};
@@ -15,6 +15,9 @@ pub struct QueryRoot;
 impl QueryRoot {
     fn users() -> UsersQuery {
         UsersQuery {}
+    }
+    fn articles() -> ArticleQuery {
+        ArticleQuery {}
     }
 }
 

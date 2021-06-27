@@ -3,6 +3,7 @@ use diesel::prelude::*;
 use crate::db_schema::articles ;
 use crate::db_schema::tags;
 use crate::db_schema::tag_article;
+use crate::db_schema::user_favorites_article;
 use crate::db::DbPool;
 use diesel::pg::upsert::*;
 use chrono::{DateTime, Utc};
@@ -10,7 +11,7 @@ use super::model::Article;
 use super::resolvers::NewArticle;
 use slugify::slugify;
 
-#[derive(Queryable, PartialEq)]
+#[derive(Queryable, PartialEq, Debug)]
 pub struct ArticleEntity {
     pub id: i32,
     pub slug: String,
@@ -33,6 +34,14 @@ pub struct TagEntity {
 pub struct TagArticleEntity {
     tag: String,
     article_id: i32
+}
+
+#[derive(Queryable, PartialEq, Insertable)]
+#[table_name = "user_favorites_article"]
+pub struct UserFavoritesArticle {
+    article_id: i32,
+    user_id: i32,
+    active: bool
 }
 
 
@@ -120,3 +129,72 @@ pub fn create(pool: &DbPool, new_article: NewArticle, given_author_id: i32 ) -> 
     })
 }
 
+fn get_user_favorites_article(pool: &DbPool, given_user_id: i32, given_article_id: i32) -> QueryResult<bool> {
+    let conn = pool.get().unwrap();
+    use crate::db_schema::user_favorites_article::dsl::*;
+    let favorites = user_favorites_article.filter(
+            user_id.eq(given_user_id).and(article_id.eq(given_article_id))
+          ).select(active).first::<bool>(&conn);
+    match favorites {
+        Err(diesel::result::Error::NotFound) => {
+                use diesel::insert_into;
+                let exec_result = insert_into(user_favorites_article)
+                .values(&UserFavoritesArticle{
+                    user_id: given_user_id,
+                    article_id: given_article_id,
+                    active: false
+                }).execute(&conn);
+                if let Err(e) = exec_result  {
+                    return Err(e);
+                }
+                Ok(false)
+        },
+        Ok(x) => Ok(x),
+        Err(y) => Err(y)
+    }
+}
+
+pub fn get_by_slug(pool: &DbPool, given_slug: String, follower_id: Option<i32>) -> QueryResult<Article> {
+    use crate::db_schema::articles::dsl::*;
+    let conn = pool.get().unwrap();
+    let entity = articles.filter(slug.eq(given_slug)).first::<ArticleEntity>(&conn)?;
+    let author = crate::user::db::get_user_by_id(pool, &entity.author_id)?;
+    let following;
+    let favorited;
+    let favorites_count;
+    if let Some(found_id) = follower_id {
+        following = crate::user::db::get_follows(pool, &found_id, &author.username)?; 
+        use crate::db_schema::user_favorites_article::dsl::*;
+        use diesel::dsl::count_star;
+        favorited = get_user_favorites_article(pool, found_id, entity.id)?; 
+        favorites_count = user_favorites_article.filter(
+            article_id.eq(entity.id).and(active.eq(true))
+        ).select(count_star()).first::<i64>(&conn)? as i32;
+    } else {
+        following = false;
+        favorited = false;
+        favorites_count = 0;
+    }
+
+   use crate::db_schema::tag_article::dsl::*;
+   let tag_list = tag_article.filter(article_id.eq(entity.id)).select(tag).load::<String>(&conn)?;
+
+
+    Ok(Article {
+        slug: entity.slug,
+        title: entity.title,
+        description: entity.description,
+        body: entity.body,
+        created_at: entity.created_at,
+        updated_at: entity.updated_at,
+        tag_list,
+        favorited,
+        favorites_count,
+        author: crate::user::model::Profile {
+            username: author.username,
+            bio: author.bio,
+            image: author.image,
+            following,
+        }
+    })
+}

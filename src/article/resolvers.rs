@@ -1,4 +1,4 @@
-use juniper::{FieldResult, GraphQLInputObject};
+use juniper::{FieldResult, GraphQLInputObject, IntoFieldError};
 
 use super::model::Article;
 use crate::schema::Context;
@@ -27,6 +27,35 @@ impl ArticleMutation {
         let author_id = id.unwrap();
         let article = create(pool, new_article, author_id)?;
         Ok(article)
+    }
+}
+
+pub struct ArticleQuery;
+
+#[juniper::graphql_object(Context = Context)]
+impl ArticleQuery {
+    fn get_article(context: &Context, slug: String) -> FieldResult<Article> {
+        let pool = &context.db_pool;
+        let follower_id = context.token.clone().map(|token| { 
+           auth::get_id_from_token(&Some(token)).unwrap()
+        });
+        use super::db::get_by_slug;
+        let article_result = get_by_slug(pool, slug, follower_id);
+        match article_result {
+            Err(diesel::result::Error::NotFound) => Err(super::errors::ArticleError::NotFound.into_field_error()),
+            Ok(article) => Ok(article),
+            Err(e) => {
+                    eprintln!("{}", e);
+                    use juniper::{graphql_value, FieldError};
+                    Err(FieldError::new(
+                        "Internal Server Error",
+                        graphql_value!({
+                            "code": "internal.server.error"
+                        }),
+                    ))
+                }
+
+        }
     }
 }
 

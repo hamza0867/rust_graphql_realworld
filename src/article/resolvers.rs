@@ -1,8 +1,9 @@
-use juniper::{FieldResult, GraphQLInputObject, IntoFieldError};
-
-use super::model::Article;
+use juniper::{FieldResult, GraphQLInputObject, IntoFieldError };
 use crate::schema::Context;
 use crate::user::auth;
+use super::db::ArticleEntity;
+
+
 
 #[derive(GraphQLInputObject)]
 #[graphql(description = "Payload to create an article")]
@@ -17,7 +18,7 @@ pub struct ArticleMutation;
 
 #[juniper::graphql_object(Context = Context)]
 impl ArticleMutation {
-    fn create_article(context: &Context, new_article: NewArticle) -> FieldResult<Article> {
+    fn create_article(context: &Context, new_article: NewArticle) -> FieldResult<ArticleEntity> {
         use super::db::create;
         let pool = &context.db_pool;
         let id = auth::get_id_from_token(&context.token);
@@ -34,26 +35,23 @@ pub struct ArticleQuery;
 
 #[juniper::graphql_object(Context = Context)]
 impl ArticleQuery {
-    fn get_article(context: &Context, slug: String) -> FieldResult<Article> {
+    fn get_article(context: &Context, slug: String) -> FieldResult<ArticleEntity> {
         let pool = &context.db_pool;
-        let follower_id = context.token.clone().map(|token| { 
-           auth::get_id_from_token(&Some(token)).unwrap()
-        });
         use super::db::get_by_slug;
-        let article_result = get_by_slug(pool, slug, follower_id);
+        let article_result = get_by_slug(pool, slug);
         match article_result {
             Err(diesel::result::Error::NotFound) => Err(super::errors::ArticleError::NotFound.into_field_error()),
             Ok(article) => Ok(article),
             Err(e) => {
-                    eprintln!("{}", e);
-                    use juniper::{graphql_value, FieldError};
-                    Err(FieldError::new(
-                        "Internal Server Error",
-                        graphql_value!({
-                            "code": "internal.server.error"
-                        }),
-                    ))
-                }
+                eprintln!("{}", e);
+                use juniper::{graphql_value, FieldError};
+                Err(FieldError::new(
+                    "Internal Server Error",
+                    graphql_value!({
+                        "code": "internal.server.error"
+                    }),
+                ))
+            }
 
         }
     }

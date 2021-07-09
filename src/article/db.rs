@@ -141,3 +141,42 @@ pub fn get_by_slug(pool: &DbPool, given_slug: String) -> QueryResult<ArticleEnti
     let entity = articles.filter(slug.eq(given_slug)).first::<ArticleEntity>(&conn)?;
     Ok(entity)
 }
+
+use super::resolvers::{ArticlesPage, ArticlesOptions};
+pub fn get_articles(pool: &DbPool, options: ArticlesOptions) -> QueryResult<ArticlesPage> {
+    let conn = pool.get().unwrap();
+    use diesel::pg::Pg;
+    let mut query = crate::db_schema::articles::table.into_boxed::<Pg>();
+    if let Some(given_tag) = options.tag {
+        use crate::db_schema::tag_article::dsl::*;
+        let article_ids = tag_article.filter(tag.eq(given_tag)).select(article_id).load::<i32>(&conn)?;
+        use crate::db_schema::articles::dsl::*;
+        query = query.filter(id.eq_any(article_ids));
+    }
+    if let Some(given_author) = options.author {
+        use crate::db_schema::users::dsl::*;
+        use crate::db_schema::users::dsl::id;
+        let given_author_id = users.filter(username.eq(given_author)).select(id).first::<i32>(&conn)?;
+        use crate::db_schema::articles::dsl::*;
+        query = query.filter(author_id.eq(given_author_id));
+    }
+    if let Some(given_favorited_by) = options.favorited {
+        use crate::db_schema::users::dsl::*;
+        use crate::db_schema::user_favorites_article::dsl::*;
+        let given_favorited_by_id = users.filter(username.eq(given_favorited_by)).select(id).first::<i32>(&conn)?;
+        let article_ids = user_favorites_article.filter(active.eq(true).and(user_id.eq(given_favorited_by_id))).select(article_id).load::<i32>(&conn)?;
+        query = query.filter(crate::db_schema::articles::dsl::id.eq_any(article_ids));
+    }
+    use crate::db_schema::articles::dsl::created_at;
+    let articles = query.offset(options.offset.unwrap_or(0) as i64)
+    .limit(options.limit.unwrap_or(20) as i64)
+    .order_by(created_at.asc())
+    .load::<ArticleEntity>(&conn)?;
+
+    let count = articles.len() as i32;
+
+    Ok(ArticlesPage {
+        articles,
+        articles_count: count
+    })
+}

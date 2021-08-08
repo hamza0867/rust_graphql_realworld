@@ -1,5 +1,6 @@
 use juniper::{FieldResult, GraphQLInputObject, IntoFieldError,
 GraphQLObject};
+
 use crate::schema::Context;
 use crate::user::auth;
 use super::db::ArticleEntity;
@@ -47,6 +48,13 @@ pub struct ArticlesPage {
    pub articles: Vec<ArticleEntity>,
    pub articles_count: i32
 }
+
+#[derive(GraphQLInputObject)]
+pub struct FeedOptions {
+   pub limit: Option<i32>,
+   pub offset: Option<i32>
+}
+
 pub struct ArticleQuery;
 
 #[juniper::graphql_object(Context = Context)]
@@ -76,6 +84,38 @@ impl ArticleQuery {
         let pool = &context.db_pool;
         use super::db::get_articles;
         let articles_result = get_articles(pool, options);
+        match articles_result {
+            Ok(articles) => Ok(articles),
+            Err(e) => {
+                eprintln!("{}", e);
+                use juniper::{graphql_value, FieldError};
+                Err(FieldError::new(
+                    "Internal Server Error",
+                    graphql_value!({
+                        "code": "internal.server.error"
+                    }),
+                ))
+            }
+
+        }
+    }
+
+    fn feed(context: &Context, options: Option<FeedOptions > ) -> FieldResult<ArticlesPage> {
+        let id = auth::get_id_from_token(&context.token);
+        if let Err(e) = id {
+            return Err(e);
+        };
+        let user_id = id.unwrap();
+
+        let pool = &context.db_pool;
+        
+        let feed_options = options.unwrap_or(FeedOptions {
+            limit: None,
+            offset: None
+        });
+
+        use super::db::get_feed;
+        let articles_result = get_feed(pool, user_id, feed_options);
         match articles_result {
             Ok(articles) => Ok(articles),
             Err(e) => {

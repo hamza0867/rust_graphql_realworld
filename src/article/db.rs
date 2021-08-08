@@ -180,3 +180,29 @@ pub fn get_articles(pool: &DbPool, options: ArticlesOptions) -> QueryResult<Arti
         articles_count: count
     })
 }
+
+use super::resolvers:: FeedOptions;
+
+pub fn get_feed(pool: &DbPool, user_id: i32,options: FeedOptions) -> QueryResult<ArticlesPage> {
+    let conn = pool.get().unwrap();
+
+    use crate::db_schema::articles::dsl::*;
+    use crate::db_schema::follows::dsl::*;
+
+    let followed_authors_ids = follows.filter(follower_id.eq(user_id)).select(followed_id);
+    let query = articles.filter(
+        author_id.eq_any(followed_authors_ids)
+    );
+    use crate::db_schema::articles::dsl::created_at;
+    let found_articles = query.offset(options.offset.unwrap_or(0) as i64)
+    .limit(options.limit.unwrap_or(20) as i64)
+    .order_by(created_at.asc())
+    .load::<ArticleEntity>(&conn)?;
+
+    let count = found_articles.len() as i32;
+
+    Ok(ArticlesPage {
+        articles: found_articles,
+        articles_count: count
+    })
+}

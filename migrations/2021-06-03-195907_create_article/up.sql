@@ -16,6 +16,6 @@ create table tags (
 
 create table tag_article (
   tag varchar references tags,
-  article_id integer references articles,
+  article_id integer references articles on delete cascade,
   primary key (tag, article_id)
 );
